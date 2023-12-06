@@ -12,4 +12,5 @@ Ideas:
   - MF Struct needs to be made, and then things fall into place from there (this is where the info is)
   - each aggregation function (the hardest part) has a specific kind of code template that it follows
     - average relies on count and sum
-    - for things like count(ny.quant), we need to check the rows against that table's condition before including it in the count, so that sort of check should be included in the loop
+    - for things like count(ny.quant), we need to check the rows against that grouping attribute's condition(s) before including it in the count, so that sort of check should be included in the loop
+    - might be best to make this code first, just to get the logic down (maybe do the grouping attribute specific checks later) and go from there, working on this gives us the hardest things to do first, but it is probably best to do this now so we can still ask questions
