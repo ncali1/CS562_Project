@@ -8,6 +8,44 @@ def main():
     file (e.g. _generated.py) and then run.
     """
 
+    ############################################################################################
+    # READ INPUT (READING FROM FILE)
+
+
+    # READ INPUT (INTERACTIVELY FROM USER)
+
+
+    # CREATING MF STRUCT
+
+
+    # ANY UPKEEP STEPS REQUIRED
+
+
+    ####### START OF QUERY PROCESSING #######
+    # QUERY PROCESSING LOGIC (NEEDS TO BE INSERTED INTO body VARIABLE (SEE BELOW))
+    ## SHOULD BE IN A BIG FOR-LOOP (JAKOB)
+
+    ## MAX (FOR LOOP)
+
+
+    ## MIN (FOR LOOP)
+
+
+    ## COUNT (FOR LOOP)
+
+
+    ## SUM (FOR LOOP)
+
+
+    ## AVERAGE (FOR LOOP) (RELIES ON COUNT AND SUM)
+
+    ####### END OF QUERY PROCESSING ####### 
+
+    # INJECT FOR LOOPS INTO body VARIABLE
+
+
+    ############################################################################################
+
     body = """
     for row in cur:
         if row['quant'] > 10:
