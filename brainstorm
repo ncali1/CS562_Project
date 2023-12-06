@@ -1,0 +1,9 @@
+Input:
+  - can be whatever we want (however we want to format)
+  - best to keep it simple
+  - needs to be capable of on the fly (when running) AND reading from a file the parameters
+  - best to store in dict of dicts (or at least something like that)
+
+Output: 
+  - .py file that, when run, will give the table
+  - 
