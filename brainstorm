@@ -6,4 +6,10 @@ Input:
 
 Output: 
   - .py file that, when run, will give the table
-  - 
+
+Ideas:
+  - Jakob thinks that only the main() in basecode/generator.py needs to be modified to do all of the processing logic (i.e. no other files need to be modified)
+  - MF Struct needs to be made, and then things fall into place from there (this is where the info is)
+  - each aggregation function (the hardest part) has a specific kind of code template that it follows
+    - average relies on count and sum
+    - for things like count(ny.quant), we need to check the rows against that table's condition before including it in the count, so that sort of check should be included in the loop
