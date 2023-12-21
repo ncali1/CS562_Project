@@ -1,0 +1,21 @@
+cust, min_1_quant, max_1_quant, min_2_quant, max_2_quant
+2
+cust
+min_1_quant, max_1_quant, min_2_quant, max_2_quant
+2.state = 'NJ'
+None
+
+With q1 as
+(
+	Select cust, min(quant) min_1_quant, max(quant) max_1_quant
+	From sales
+	Group by cust
+), q2 as
+(
+	Select cust, min(quant) min_2_quant, max(quant) max_2_quant
+	From sales
+	Where state = 'NJ'
+	Group by cust
+)
+Select *
+From q1 natural join q2
