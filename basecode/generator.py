@@ -1,6 +1,44 @@
 import subprocess
 import sys
 
+# Generate code for grouping variable calculation
+def groupingVariable(predicates, aggregates): 
+    return f"""
+    for row in cur:
+        if {predicates}
+            # Look up current_row.cust in mf_struct
+            pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
+            # Current_row.cust found in mf_struct
+            {aggregates}
+    """
+
+# Split predicates for grouping var’s
+# Ex: 1.state = 'NY'; 2.state = 'NJ'; 3.state = 'CT' -> [["state = 'NY'"], ["state = 'NJ'"], ["state = 'CT'"]
+def splitPredicates(predicates):
+    parsedPredicates = []
+    temp = []
+    prev = "1" # Assuming the predicates are sorted
+    for pred in predicates:
+        if prev != pred[0]:
+            parsedPredicates.append(temp)
+            temp = []
+        temp.append(pred[2:])
+        prev = pred[0]
+    parsedPredicates.append(temp)
+    return parsedPredicates
+
+# Generate the string for predicates in grouping variable calculation
+# Ex: ["state = 'NY'"] -> cur.state == 'NY
+def parsePredicates(predicates):
+    predicateString = ""
+    for pred in predicates:
+        index = pred.find(" = ")
+        if index != -1:
+            predicateString =  predicateString + 'and cur.' + pred[:index + 1] + '=' + pred[index + 1:] # Add an addition '=' for equality cases
+        else:
+            predicateString =  predicateString + 'and cur.' + pred
+    return predicateString[4:] # Cut off the first and
+
 def main():
     """
     This is the generator code. It should take in the MF structure and generate the code
@@ -44,6 +82,9 @@ def main():
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
     ##### Add Having later #####
+    test1 = splitPredicates(Pred_List)
+    test2 = parsePredicates(["state = 'NY'", "quant > 100"])
+    print(test2)
     '''
 
     ############################################################################################
