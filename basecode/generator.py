@@ -7,9 +7,9 @@ def groupingVariable(predicates, aggregates, additionalCalulations):
     cur.scroll(0,'absolute')
 
     for row in cur:
+        # Look up current_row.cust in mf_struct
+        pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
         if {predicates}
-            # Look up current_row.cust in mf_struct
-            pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
             # Current_row.cust found in mf_struct
 {aggregates}
     {additionalCalulations}"""
@@ -35,19 +35,33 @@ def splitPredicates(predicates, n):
     return parsedPredicates
 
 # Generate the string for predicates in grouping variable calculation
-# Ex: ["state = 'NY'"] -> cur['state'] == 'NY
+# Ex: ["state = 'NY'"] -> cur['state'] == 'NY'
+# Ex: [quant > avg_1_quant] -> cur['quant'] > mf_struct[pos][avg_1_quant]
 def parsePredicates(predicates):
+    compareAgg = set(["avg", "min", "max", "count", "sum"])
     predicateString = ""
     for pred in predicates:
-        temp = pred.split(" ", 1)
+        # Add an addition '=' for equality cases
         if pred.find(" = ") != -1:
-            predicateString =  predicateString + " and row['" + temp[0] + "'] == " + temp[1][2:] # Add an addition '=' for equality cases
+            temp1 = pred.split(" ")
+            temp2 = temp1[2].split("_")
+            if temp2[0] in compareAgg: # For dependant aggregates (Assumes the aggregate has been calculated at this point in time)
+                predicateString =  predicateString + " and row['" + temp1[0] + "'] == mf_struct[pos]['" + temp1[2] + "']"
+            else:
+                temp = pred.split(" ", 1)
+                predicateString =  predicateString + " and row['" + temp[0] + "'] == " + temp[1][2:]
         else:
-            predicateString =  predicateString + " and row['" + temp[0] + "'] " + temp[1]
+            temp1 = pred.split(" ")
+            temp2 = temp1[2].split("_")
+            if temp2[0] in compareAgg: # For dependant aggregates (Assumes the aggregate has been calculated at this point in time)
+                predicateString =  predicateString + " and row['" + temp1[0] + "'] " + temp1[1] + " mf_struct[pos]['" + temp1[2] + "']"
+            else:
+                temp = pred.split(" ", 1)
+                predicateString =  predicateString + " and row['" + temp[0] + "'] " + temp[1]
     if not predicateString:
         return "True:" # For the for loop to run
     else:
-        return predicateString[4:] + ":" # Cut off the first and and add a colon
+        return predicateString[5:] + ":" # Cut off the first and and add a colon
 
 # Ex: ['count_1_quant', 'sum_2_quant', 'avg_2_quant', 'max_3_quant'] -> [[('count', 'quant', 'count_1_quant')], [('sum', 'quant', 'sum_2_quant'), ('avg', 'quant', 'avg_2_quant')], [('max', 'quant', 'max_3_quant')]]
 def split_aggregates(aggregates):
