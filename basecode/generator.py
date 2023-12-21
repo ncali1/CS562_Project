@@ -2,7 +2,7 @@ import subprocess
 import sys
 
 # Generate code for grouping variable calculation
-def groupingVariable(predicates, aggregates): 
+def groupingVariable(predicates, aggregates, additionalCalulations): 
     return f"""
     cur.scroll(0,'absolute')
 
@@ -12,7 +12,12 @@ def groupingVariable(predicates, aggregates):
             pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
             # Current_row.cust found in mf_struct
 {aggregates}
-"""
+    {additionalCalulations}"""
+
+# Generate code for avg calculation
+def additionalCalulations(addCalc): 
+    return f"""for i in range(NUM_OF_ENTRIES):
+        {addCalc}"""
 
 # Split predicates for grouping var’s
 # Ex: 1.state = 'NY'; 2.state = 'NJ'; 3.state = 'CT' -> [["state = 'NY'"], ["state = 'NJ'"], ["state = 'CT'"]
@@ -64,6 +69,7 @@ def generate_agg_code(gv_list):
     Usage: Takes in gv_list (list of tuples) and generates the string that will be inputted into the generated file.
     '''
     agg_string = """"""
+    avg_string = """"""
     for tup in gv_list: # tup is of the following type: (agg: String, attr: String)
         agg = tup[0]
         attr = tup[1]
@@ -78,23 +84,30 @@ def generate_agg_code(gv_list):
                 agg_string = agg_string + minCodeGenerator(attr, aggName)
             case 'sum':
                 agg_string = agg_string + sumCodeGenerator(attr, aggName)
+            case 'avg':
+                string1, string2 = avgCodeGenerator(attr, aggName)
+                agg_string = agg_string + string1
+                avg_string = avg_string + string2
             case _:
                 print("Error: Aggregate not found!")
                 return -1
-    return agg_string[:-1]
+    return agg_string[:-1], avg_string
 
 # Code generators for all of the aggregate functions
 def maxCodeGenerator(attr, aggName):
-    return f"""            if row['{attr}'] > mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
+    return f"""            if mf_struct[pos]['{aggName}'] == float('inf'): mf_struct[pos]['{aggName}'] = row['{attr}']\n            if row['{attr}'] > mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
 
 def minCodeGenerator(attr, aggName):
-    return f"""            if row['{attr}'] < mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
+    return f"""            if mf_struct[pos]['{aggName}'] == float('-inf'): mf_struct[pos]['{aggName}'] = row['{attr}']\n            if row['{attr}'] < mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
 
 def countCodeGenerator(aggName):
     return f"""            mf_struct[pos]['{aggName}'] += 1\n"""
 
 def sumCodeGenerator(attr, aggName):
     return f"""            mf_struct[pos]['{aggName}'] += row['{attr}']\n"""
+
+def avgCodeGenerator(attr, aggName):
+    return f"""            mf_struct[pos]['{aggName}'][0] += row['{attr}']\n            mf_struct[pos]['{aggName}'][1] += 1\n""", f"""mf_struct[i]['{aggName}'] =  mf_struct[i]['{aggName}'][0] / mf_struct[i]['{aggName}'][1]\n"""
 
 def main():
     """
@@ -142,10 +155,14 @@ def main():
     splitPred = splitPredicates(Pred_List)
     splitAgg = split_aggregates(F_Vect)
     genCode = ""
+    addCode = ""
     for i in range(n):
         parsePred = parsePredicates(splitPred[i])
-        aggCode = generate_agg_code(splitAgg[i])
-        genCode = genCode + groupingVariable(parsePred, aggCode)
+        aggCode, avgCode = generate_agg_code(splitAgg[i])
+        if avgCode:
+            addCode = addCode + additionalCalulations(avgCode)
+        genCode = genCode + groupingVariable(parsePred, aggCode, addCode)
+        addCode = ""
     '''
     ##### Testing Code #####
     test1 = splitPredicates(Pred_List)
@@ -239,7 +256,15 @@ def add(cur_row, V, NUM_OF_ENTRIES, mf_struct):
     for attrib in V:
         base_struct[attrib] = None
     for aggre in F_Vect:
-        base_struct[aggre] = 0
+        split_agg = aggre.split("_")
+        if split_agg[0] == 'avg':
+            base_struct[aggre] = [0, 0] # Create a list to store sum and count to compute the average
+        elif split_agg[0] == 'min':
+            base_struct[aggre] = float('-inf')
+        elif split_agg[0] == 'max':
+            base_struct[aggre] = float('inf')
+        else:
+            base_struct[aggre] = 0
     mf_struct = []
     for i in range(500):
         mf_struct.append(copy.deepcopy(base_struct))
@@ -279,6 +304,9 @@ def query():
     cur.execute("SELECT * FROM sales")
     
     {setUp}{genCode}
+    for entry in mf_struct:
+        for col in set(F_Vect) - set(S):
+            del entry[col]
     
     return tabulate.tabulate(mf_struct[:NUM_OF_ENTRIES],
                         headers="keys", tablefmt="psql")
