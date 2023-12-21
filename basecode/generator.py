@@ -1,6 +1,101 @@
 import subprocess
 import sys
 
+# Generate code for grouping variable calculation
+def groupingVariable(predicates, aggregates): 
+    return f"""
+    cur.scroll(0,'absolute')
+
+    for row in cur:
+        if {predicates}
+            # Look up current_row.cust in mf_struct
+            pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
+            # Current_row.cust found in mf_struct
+{aggregates}
+"""
+
+# Split predicates for grouping var’s
+# Ex: 1.state = 'NY'; 2.state = 'NJ'; 3.state = 'CT' -> [["state = 'NY'"], ["state = 'NJ'"], ["state = 'CT'"]
+def splitPredicates(predicates):
+    parsedPredicates = []
+    temp = []
+    prev = "1" # Assuming the predicates are sorted
+    for pred in predicates:
+        if prev != pred[0]:
+            parsedPredicates.append(temp)
+            temp = []
+        temp.append(pred[2:])
+        prev = pred[0]
+    parsedPredicates.append(temp)
+    return parsedPredicates
+
+# Generate the string for predicates in grouping variable calculation
+# Ex: ["state = 'NY'"] -> cur['state'] == 'NY
+def parsePredicates(predicates):
+    predicateString = ""
+    for pred in predicates:
+        temp = pred.split(" ", 1)
+        if pred.find(" = ") != -1:
+            predicateString =  predicateString + "and row['" + temp[0] + "'] == " + temp[1][2:] # Add an addition '=' for equality cases
+        else:
+            predicateString =  predicateString + "and row['" + temp[0] + "'] " + temp[1]
+    return predicateString[4:] + ":" # Cut off the first and and add a colon
+
+# Ex: ['count_1_quant', 'sum_2_quant', 'avg_2_quant', 'max_3_quant'] -> [[('count', 'quant', 'count_1_quant')], [('sum', 'quant', 'sum_2_quant'), ('avg', 'quant', 'avg_2_quant')], [('max', 'quant', 'max_3_quant')]]
+def split_aggregates(aggregates):
+        '''
+        Usage: Used for splitting up the aggregates (a list of strings) into a list of lists of tuples (each list contains tuples composed of the aggregate followed by the attribute name)
+        '''
+        split_aggregates = [] # end result initialized
+        curr_gv = "1" # assumes that the list of aggregates are sorted
+        temp = []
+        for agg in aggregates:
+            split_agg = agg.split("_") # splits up the specific aggregate (as a string) (i.e. count_1_quant) into a list containing its components (i.e. ["count", "1", "quant"])
+            if split_agg[1] != curr_gv:
+                split_aggregates.append(temp)
+                temp = []
+                curr_gv = split_agg[1]
+            temp.append((split_agg[0], split_agg[2], agg))
+        split_aggregates.append(temp)
+        return split_aggregates
+
+def generate_agg_code(gv_list):
+    '''
+    Usage: Takes in gv_list (list of tuples) and generates the string that will be inputted into the generated file.
+    '''
+    agg_string = """"""
+    for tup in gv_list: # tup is of the following type: (agg: String, attr: String)
+        agg = tup[0]
+        attr = tup[1]
+        aggName = tup[2]
+        # Will check to see which aggregate it is, will call the appropriate function that will return the appropriate string, which will get added to agg_string
+        match agg:
+            case 'count': 
+                agg_string = agg_string + countCodeGenerator(aggName)
+            case 'max':
+                agg_string = agg_string + maxCodeGenerator(attr, aggName)
+            case 'min':
+                agg_string = agg_string + minCodeGenerator(attr, aggName)
+            case 'sum':
+                agg_string = agg_string + sumCodeGenerator(attr, aggName)
+            case _:
+                print("Error: Aggregate not found!")
+                return -1
+    return agg_string[:-1]
+
+# Code generators for all of the aggregate functions
+def maxCodeGenerator(attr, aggName):
+    return f"""            if row['{attr}'] > mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
+
+def minCodeGenerator(attr, aggName):
+    return f"""            if row['{attr}'] < mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
+
+def countCodeGenerator(aggName):
+    return f"""            mf_struct[pos]['{aggName}'] += 1\n"""
+
+def sumCodeGenerator(attr, aggName):
+    return f"""            mf_struct[pos]['{aggName}'] += row['{attr}']\n"""
+
 def main():
     """
     This is the generator code. It should take in the MF structure and generate the code
@@ -34,7 +129,7 @@ def main():
         S = sys.argv[1] #  1. S - projected columns / expressions
         n = sys.argv[2] #  2. n - number of grouping variables
         V = sys.argv[3] #  3. V - grouping attributes
-        F_Vect = sys.argv[4] #  4. F-VECT – vector of aggregate functions (implemented as list)
+        F_Vect = sys.argv[4] #  4. F-VECT – vector of aggregate functions
         Pred_List = sys.argv[5] #  5. PRED-LIST – list of predicates for grouping
         Having = sys.argv[6] #  6. HAVING
     # Process Phi expression arguments
@@ -44,6 +139,22 @@ def main():
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
     ##### Add Having later #####
+    splitPred = splitPredicates(Pred_List)
+    splitAgg = split_aggregates(F_Vect)
+    genCode = ""
+    for i in range(n):
+        parsePred = parsePredicates(splitPred[i])
+        aggCode = generate_agg_code(splitAgg[i])
+        genCode = genCode + groupingVariable(parsePred, aggCode)
+    '''
+    ##### Testing Code #####
+    test1 = splitPredicates(Pred_List)
+    test2 = parsePredicates(test1[1])
+    test4 = split_aggregates(F_Vect)
+    test5 = generate_agg_code(test4[1])
+    test3 = groupingVariable(test2, test5)
+    print(test3)
+    '''
     '''
 
     ############################################################################################
@@ -60,8 +171,6 @@ def main():
 
 
     ####### START OF QUERY PROCESSING #######
-
-
     # QUERY PROCESSING LOGIC (NEEDS TO BE INSERTED INTO body VARIABLE (SEE BELOW))
     ## (NOTE 0) SHOULD BE IN A BIG FOR-LOOP (JAKOB), iterate through vector of aggregates (#4 in phi args)
 
@@ -96,42 +205,6 @@ def main():
     # INJECT FOR LOOPS INTO body VARIABLE
 
 
-
-    def split_aggregates(aggregates):
-        '''
-        Usage: Used for splitting up the aggregates (a list of strings) into a list of lists of tuples (each list contains tuples composed of the aggregate followed by the attribute name)
-        '''
-        split_aggregates = [] # end result initialized
-        curr_gv = "1" # assumes that the list of aggregates are sorted
-        temp = []
-        for agg in aggregates:
-            split_agg = agg.split("_") # splits up the specific aggregate (as a string) (i.e. count_1_quant) into a list containing its components (i.e. ["count", "1", "quant"])
-            if split_agg[1] != curr_gv:
-                split_aggregates.append(temp)
-                temp = []
-                curr_gv = split_agg[1]
-            temp.append((split_agg[0], split_agg[2]))
-        split_aggregates.append(temp)
-        return split_aggregates
-
-    def generate_agg_code(split_aggregates):
-        '''
-        Usage: takes in split_aggregates (list of lists of tuples) and generates the string that will be inputted into the generated file.
-
-        NOTE: I think that this will be the bulk of the query generation, but idk for certain. (TBD)
-        NOTE: I also don't know if this should reference the cursor object either... :skull:
-        '''
-
-        agg_string = """"""
-        curr_gv = 1 # will assume that no grouping variable is skipped
-        for gv_list in split_aggregates: # will iterate through list of lists of tuples
-            for tup in gv_list: # tup is of the following type: (agg: String, attr: String)
-                agg = tup[0]
-                attr = tup[1]
-                # will check to see which aggregate it is, will call the appropriate function that will return the appropriate string, which will get added to agg_string
-                # i don't know if this requires the predicates to compare against the grouping variable?
-
-        
     ############################################################################################
     functions = """
 # Search for a given "group by" attrib. value(s) in mf_struct
@@ -178,7 +251,6 @@ def add(cur_row, V, NUM_OF_ENTRIES, mf_struct):
         pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
         if pos == -1:
             NUM_OF_ENTRIES, mf_struct = add(row, V, NUM_OF_ENTRIES, mf_struct)
-
     """
 
     # Note: The f allows formatting with variables.
@@ -207,7 +279,7 @@ def query():
     cur.execute("SELECT * FROM sales")
     
     _global = []
-    {setUp}
+    {setUp}{genCode}
     
     return tabulate.tabulate(_global,
                         headers="keys", tablefmt="psql")
