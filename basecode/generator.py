@@ -105,10 +105,26 @@ def generate_agg_code(gv_list):
                 string1, string2 = avgCodeGenerator(attr, aggName)
                 agg_string = agg_string + string1
                 avg_string = avg_string + string2
-            case _:
-                print("Error: Aggregate not found!")
-                return -1
-    return agg_string[:-1], avg_string
+    return agg_string[:-1], avg_string # Can never have no aggregates
+
+# Generates code for having clause
+# Ex: sum_1_quant > 2 * sum_2_quant -> "if mf_struct[i]['sum_1_quant'] > 2 * mf_struct[i]['sum_2_quant']: _global.append(mf_struct[i])
+def generate_having_code(having):
+    having_string = "if"
+    compareAgg = set(["avg", "min", "max", "count", "sum"])
+    compareAttrib = set(["cust", "prod", "day", "month", "year", "state", "quant", "date"]) # Hard coded
+    wordList = having.split(" ")
+    for word in wordList:
+        temp = word.split("_")
+        # Add a mf_struct[i] for aggregates and attributes
+        if temp[0] in compareAgg or word in compareAttrib:
+            having_string = having_string + " mf_struct[i]['" + word + "']"
+        # Add an addition '=' for equality cases
+        elif word == "=":
+            having_string = having_string + " =="
+        else:
+            having_string = having_string + " " + word
+    return having_string + ": _global.append(mf_struct[i])"
 
 # Code generators for all of the aggregate functions
 def maxCodeGenerator(attr, aggName):
@@ -169,11 +185,11 @@ def main():
     V = V.split(", ")
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
-    ##### Add Having later #####
     splitPred = splitPredicates(Pred_List, n)
     splitAgg = split_aggregates(F_Vect)
     genCode = ""
     addCode = ""
+    # Generate the loops for aggregate functions
     for i in range(n):
         parsePred = parsePredicates(splitPred[i])
         aggCode, avgCode = generate_agg_code(splitAgg[i])
@@ -181,66 +197,12 @@ def main():
             addCode = addCode + additionalCalulations(avgCode)
         genCode = genCode + groupingVariable(parsePred, aggCode, addCode)
         addCode = ""
-    '''
-    ##### Testing Code #####
-    test1 = splitPredicates(Pred_List)
-    test2 = parsePredicates(test1[1])
-    test4 = split_aggregates(F_Vect)
-    test5 = generate_agg_code(test4[1])
-    test3 = groupingVariable(test2, test5)
-    print(test3)
-    '''
-    '''
+    if Having == "None":
+        havingCode = "_global.append(mf_struct[i])"
+    else:
+        havingCode = generate_having_code(Having)
+    # Inject code in the appropriate variables
 
-    ############################################################################################
-    # READ INPUT (READING FROM FILE)
-    
-
-    # READ INPUT (INTERACTIVELY FROM USER)
-        
-
-    # CREATING MF STRUCT
-
-
-    # ANY UPKEEP STEPS REQUIRED
-
-
-    ####### START OF QUERY PROCESSING #######
-    # QUERY PROCESSING LOGIC (NEEDS TO BE INSERTED INTO body VARIABLE (SEE BELOW))
-    ## (NOTE 0) SHOULD BE IN A BIG FOR-LOOP (JAKOB), iterate through vector of aggregates (#4 in phi args)
-
-    ## MAX (FOR LOOP)
-    # initialize dictionary
-    ## i think that the name of the dictionary should be different for each max computation since there could be more than one, and we don't want things to get messy. name it as AGG_NAME_dict, where AGG_NAME is where in the vector of aggregates we are currently at (see NOTE 0 of Query Processing Logic)
-    # max_val = row0_val # set the max to be the value of the very first NOT NEEDED IF USE DICT, SINCE YOU CAN ALWAYS ADD TO DICT NEW VALUES
-    for row in database: # specific variable names tbd
-        if where_clause_conditions:
-            group_tuple = blablaba # this is to calculate where in the dictionary we are going to compare with (or add) adding might need separate code, idk
-            if value_at_row > max_val_for_group: # max_val_for_group is gonna be stored in the dict
-                max_val_for_group = value # this needs to be changed for the given dict entry for that tuple
-        # Question: ~~do we need to keep track of the rows in a separate thing so that we can display them all~~
-        ## Answer: we do not, since we will likely be keeping the max value in a dictionary, where the key is the grouping tuple (e.g. (cust, prod)) and the value is the max for that tuple (like, if we were looking for the max quantity for each customer and product combination, then the dict would be like {(Boo, Apple): 500; (Boo, Banana): 1000 ...}), or something like that (formatting tbd)
-
-    ## MIN (FOR LOOP)
-    # symmetric to max
-
-    ## COUNT (FOR LOOP)
-    # similar to max?
-
-
-    ## SUM (FOR LOOP)
-    # similar to max?
-
-    ## AVERAGE (FOR LOOP) (RELIES ON COUNT AND SUM)
-    # similar to max?
-
-    ''' 
-    ####### END OF QUERY PROCESSING ####### 
-
-    # INJECT FOR LOOPS INTO body VARIABLE
-
-
-    ############################################################################################
     functions = """
 # Search for a given "group by" attrib. value(s) in mf_struct
 def lookup(cur_row, V, NUM_OF_ENTRIES, mf_struct):
@@ -267,7 +229,7 @@ def add(cur_row, V, NUM_OF_ENTRIES, mf_struct):
     V = {V} #  3. V - grouping attributes
     F_Vect = {F_Vect} #  4. F-VECT - vector of aggregate functions
     Pred_List = {Pred_List} #  5. PRED-LIST - list of predicates for grouping
-    Having = {Having} #  6. HAVING
+    Having = "{Having}" #  6. HAVING
 
     # Generate the code for mf_struct
     base_struct = dict()
@@ -321,12 +283,14 @@ def query():
     cur = conn.cursor()
     cur.execute("SELECT * FROM sales")
     
+    _global = []
     {setUp}{genCode}
-    for entry in mf_struct:
+    for i in range(NUM_OF_ENTRIES):
         for col in set(F_Vect) - set(S):
-            del entry[col]
+            del mf_struct[i][col]
+        {havingCode}
     
-    return tabulate.tabulate(mf_struct[:NUM_OF_ENTRIES],
+    return tabulate.tabulate(_global,
                         headers="keys", tablefmt="psql")
 
 def main():
@@ -335,7 +299,6 @@ def main():
 if "__main__" == __name__:
     main()
 """
-
     # Write the generated code to a file
     open("_generated.py", "w").write(tmp)
     # Execute the generated code
