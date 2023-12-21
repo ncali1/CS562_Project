@@ -3,7 +3,8 @@ import sys
 
 # Generate code for grouping variable calculation
 def groupingVariable(predicates, aggregates): 
-    return f"""
+    return f"""cur.scroll(0,'absolute')
+
     for row in cur:
         if {predicates}
             # Look up current_row.cust in mf_struct
@@ -28,16 +29,16 @@ def splitPredicates(predicates):
     return parsedPredicates
 
 # Generate the string for predicates in grouping variable calculation
-# Ex: ["state = 'NY'"] -> cur.state == 'NY
+# Ex: ["state = 'NY'"] -> cur['state'] == 'NY
 def parsePredicates(predicates):
     predicateString = ""
     for pred in predicates:
-        index = pred.find(" = ")
-        if index != -1:
-            predicateString =  predicateString + 'and cur.' + pred[:index + 1] + '=' + pred[index + 1:] # Add an addition '=' for equality cases
+        temp = pred.split(" ", 1)
+        if pred.find(" = ") != -1:
+            predicateString =  predicateString + "and row['" + temp[0] + "'] == " + temp[1][2:] # Add an addition '=' for equality cases
         else:
-            predicateString =  predicateString + 'and cur.' + pred
-    return predicateString[4:] # Cut off the first and
+            predicateString =  predicateString + "and row['" + temp[0] + "'] " + temp[1]
+    return predicateString[4:] + ":" # Cut off the first and and add a colon
 
 def main():
     """
@@ -82,9 +83,10 @@ def main():
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
     ##### Add Having later #####
+    ##### Testing Code #####
     test1 = splitPredicates(Pred_List)
     test2 = parsePredicates(["state = 'NY'", "quant > 100"])
-    print(test2)
+    test3 = groupingVariable(test2, "print(row)")
     '''
 
     ############################################################################################
@@ -181,7 +183,6 @@ def add(cur_row, V, NUM_OF_ENTRIES, mf_struct):
         pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
         if pos == -1:
             NUM_OF_ENTRIES, mf_struct = add(row, V, NUM_OF_ENTRIES, mf_struct)
-
     """
 
     # Note: The f allows formatting with variables.
@@ -211,6 +212,7 @@ def query():
     
     _global = []
     {setUp}
+    {test3}
     
     return tabulate.tabulate(_global,
                         headers="keys", tablefmt="psql")
