@@ -21,17 +21,17 @@ def additionalCalulations(addCalc):
 
 # Split predicates for grouping var’s
 # Ex: 1.state = 'NY'; 2.state = 'NJ'; 3.state = 'CT' -> [["state = 'NY'"], ["state = 'NJ'"], ["state = 'CT'"]
-def splitPredicates(predicates):
-    parsedPredicates = []
-    temp = []
-    prev = "1" # Assuming the predicates are sorted
+def splitPredicates(predicates, n):
+    if predicates == ["None"]: # Edge case when there are no predicates
+        return [[]]
+    parsedPredicates = [[] for i in range(n)]
     for pred in predicates:
-        if prev != pred[0]:
-            parsedPredicates.append(temp)
-            temp = []
-        temp.append(pred[2:])
-        prev = pred[0]
-    parsedPredicates.append(temp)
+        try:
+            index = int(pred[0]) - 1
+            parsedPredicates[index].append(pred[2:])
+        except:
+            for list in parsedPredicates:
+                list.append(pred)
     return parsedPredicates
 
 # Generate the string for predicates in grouping variable calculation
@@ -41,10 +41,13 @@ def parsePredicates(predicates):
     for pred in predicates:
         temp = pred.split(" ", 1)
         if pred.find(" = ") != -1:
-            predicateString =  predicateString + "and row['" + temp[0] + "'] == " + temp[1][2:] # Add an addition '=' for equality cases
+            predicateString =  predicateString + " and row['" + temp[0] + "'] == " + temp[1][2:] # Add an addition '=' for equality cases
         else:
-            predicateString =  predicateString + "and row['" + temp[0] + "'] " + temp[1]
-    return predicateString[4:] + ":" # Cut off the first and and add a colon
+            predicateString =  predicateString + " and row['" + temp[0] + "'] " + temp[1]
+    if not predicateString:
+        return "True:" # For the for loop to run
+    else:
+        return predicateString[4:] + ":" # Cut off the first and and add a colon
 
 # Ex: ['count_1_quant', 'sum_2_quant', 'avg_2_quant', 'max_3_quant'] -> [[('count', 'quant', 'count_1_quant')], [('sum', 'quant', 'sum_2_quant'), ('avg', 'quant', 'avg_2_quant')], [('max', 'quant', 'max_3_quant')]]
 def split_aggregates(aggregates):
@@ -128,6 +131,7 @@ def main():
         F_Vect = f.readline()
         Pred_List = f.readline()
         Having = f.readline()
+        f.close()
         S = S.strip("\n")
         n = n.strip("\n")
         V = V.strip("\n")
@@ -152,7 +156,7 @@ def main():
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
     ##### Add Having later #####
-    splitPred = splitPredicates(Pred_List)
+    splitPred = splitPredicates(Pred_List, n)
     splitAgg = split_aggregates(F_Vect)
     genCode = ""
     addCode = ""
