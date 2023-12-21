@@ -34,7 +34,7 @@ def main():
         S = sys.argv[1] #  1. S - projected columns / expressions
         n = sys.argv[2] #  2. n - number of grouping variables
         V = sys.argv[3] #  3. V - grouping attributes
-        F_Vect = sys.argv[4] #  4. F-VECT – vector of aggregate functions
+        F_Vect = sys.argv[4] #  4. F-VECT – vector of aggregate functions (implemented as list)
         Pred_List = sys.argv[5] #  5. PRED-LIST – list of predicates for grouping
         Having = sys.argv[6] #  6. HAVING
     # Process Phi expression arguments
@@ -60,6 +60,8 @@ def main():
 
 
     ####### START OF QUERY PROCESSING #######
+
+
     # QUERY PROCESSING LOGIC (NEEDS TO BE INSERTED INTO body VARIABLE (SEE BELOW))
     ## (NOTE 0) SHOULD BE IN A BIG FOR-LOOP (JAKOB), iterate through vector of aggregates (#4 in phi args)
 
@@ -94,6 +96,42 @@ def main():
     # INJECT FOR LOOPS INTO body VARIABLE
 
 
+
+    def split_aggregates(aggregates):
+        '''
+        Usage: Used for splitting up the aggregates (a list of strings) into a list of lists of tuples (each list contains tuples composed of the aggregate followed by the attribute name)
+        '''
+        split_aggregates = [] # end result initialized
+        curr_gv = "1" # assumes that the list of aggregates are sorted
+        temp = []
+        for agg in aggregates:
+            split_agg = agg.split("_") # splits up the specific aggregate (as a string) (i.e. count_1_quant) into a list containing its components (i.e. ["count", "1", "quant"])
+            if split_agg[1] != curr_gv:
+                split_aggregates.append(temp)
+                temp = []
+                curr_gv = split_agg[1]
+            temp.append((split_agg[0], split_agg[2]))
+        split_aggregates.append(temp)
+        return split_aggregates
+
+    def generate_agg_code(split_aggregates):
+        '''
+        Usage: takes in split_aggregates (list of lists of tuples) and generates the string that will be inputted into the generated file.
+
+        NOTE: I think that this will be the bulk of the query generation, but idk for certain. (TBD)
+        NOTE: I also don't know if this should reference the cursor object either... :skull:
+        '''
+
+        agg_string = """"""
+        curr_gv = 1 # will assume that no grouping variable is skipped
+        for gv_list in split_aggregates: # will iterate through list of lists of tuples
+            for tup in gv_list: # tup is of the following type: (agg: String, attr: String)
+                agg = tup[0]
+                attr = tup[1]
+                # will check to see which aggregate it is, will call the appropriate function that will return the appropriate string, which will get added to agg_string
+                # i don't know if this requires the predicates to compare against the grouping variable?
+
+        
     ############################################################################################
     functions = """
 # Search for a given "group by" attrib. value(s) in mf_struct
