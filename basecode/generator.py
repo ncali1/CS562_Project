@@ -109,10 +109,10 @@ def generate_agg_code(gv_list):
 
 # Generates code for having clause
 # Ex: sum_1_quant > 2 * sum_2_quant -> "if mf_struct[i]['sum_1_quant'] > 2 * mf_struct[i]['sum_2_quant']: _global.append(mf_struct[i])
-def generate_having_code(having):
+def generate_having_code(having, groupByAttrib):
     having_string = "if"
     compareAgg = set(["avg", "min", "max", "count", "sum"])
-    compareAttrib = set(["cust", "prod", "day", "month", "year", "state", "quant", "date"]) # Hard coded
+    compareAttrib = set(groupByAttrib)
     wordList = having.split(" ")
     for word in wordList:
         temp = word.split("_")
@@ -200,7 +200,7 @@ def main():
     if Having == "None":
         havingCode = "_global.append(mf_struct[i])"
     else:
-        havingCode = generate_having_code(Having)
+        havingCode = generate_having_code(Having, V)
     # Inject code in the appropriate variables
 
     functions = """
