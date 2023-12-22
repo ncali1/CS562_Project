@@ -2,55 +2,77 @@ import subprocess
 import sys
 
 # Generate code for grouping variable calculation
-def groupingVariable(predicates, aggregates): 
+def generate_for_loop_code(pred_string, agg_string, add_calc_string): 
     return f"""
     cur.scroll(0,'absolute')
 
     for row in cur:
-        if {predicates}
-            # Look up current_row.cust in mf_struct
-            pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
+        # Look up current_row.cust in mf_struct
+        pos = lookup(row, V, NUM_OF_ENTRIES, mf_struct)
+        if {pred_string}
             # Current_row.cust found in mf_struct
-{aggregates}
-"""
+{agg_string}
+    {add_calc_string}"""
+
+# Generate code for avg calculation
+def generate_avg_code(add_calc_string): 
+    return f"""for i in range(NUM_OF_ENTRIES):
+        {add_calc_string}"""
 
 # Split predicates for grouping var’s
 # Ex: 1.state = 'NY'; 2.state = 'NJ'; 3.state = 'CT' -> [["state = 'NY'"], ["state = 'NJ'"], ["state = 'CT'"]
-def splitPredicates(predicates):
-    parsedPredicates = []
-    temp = []
-    prev = "1" # Assuming the predicates are sorted
-    for pred in predicates:
-        if prev != pred[0]:
-            parsedPredicates.append(temp)
-            temp = []
-        temp.append(pred[2:])
-        prev = pred[0]
-    parsedPredicates.append(temp)
-    return parsedPredicates
+def split_predicates(pred_list, n):
+    if pred_list == ["None"]: # Edge case when there are no predicates
+        return [[]]
+    parsed_pred = [[] for i in range(n)]
+    for pred in pred_list:
+        try:
+            index = int(pred[0]) - 1
+            parsed_pred[index].append(pred[2:])
+        except:
+            for list in parsed_pred:
+                list.append(pred)
+    return parsed_pred
 
 # Generate the string for predicates in grouping variable calculation
-# Ex: ["state = 'NY'"] -> cur['state'] == 'NY
-def parsePredicates(predicates):
-    predicateString = ""
-    for pred in predicates:
-        temp = pred.split(" ", 1)
+# Ex: ["state = 'NY'"] -> cur['state'] == 'NY'
+# Ex: [quant > avg_1_quant] -> cur['quant'] > mf_struct[pos][avg_1_quant]
+def generate_pred_code(pred_list):
+    compare_agg = set(["avg", "min", "max", "count", "sum"])
+    pred_string = ""
+    for pred in pred_list:
+        # Add an addition '=' for equality cases
         if pred.find(" = ") != -1:
-            predicateString =  predicateString + "and row['" + temp[0] + "'] == " + temp[1][2:] # Add an addition '=' for equality cases
+            temp1 = pred.split(" ")
+            temp2 = temp1[2].split("_")
+            if temp2[0] in compare_agg: # For dependant aggregates (Assumes the aggregate has been calculated at this point in time)
+                pred_string =  pred_string + " and row['" + temp1[0] + "'] == mf_struct[pos]['" + temp1[2] + "']"
+            else:
+                temp = pred.split(" ", 1)
+                pred_string =  pred_string + " and row['" + temp[0] + "'] == " + temp[1][2:]
         else:
-            predicateString =  predicateString + "and row['" + temp[0] + "'] " + temp[1]
-    return predicateString[4:] + ":" # Cut off the first and and add a colon
+            temp1 = pred.split(" ")
+            temp2 = temp1[2].split("_")
+            if temp2[0] in compare_agg: # For dependant aggregates (Assumes the aggregate has been calculated at this point in time)
+                pred_string =  pred_string + " and row['" + temp1[0] + "'] " + temp1[1] + " mf_struct[pos]['" + temp1[2] + "']"
+            else:
+                temp = pred.split(" ", 1)
+                pred_string = pred_string + " and row['" + temp[0] + "'] " + temp[1]
+    if not pred_string:
+        return "True:" # For the for loop to run
+    else:
+        return pred_string[5:] + ":" # Cut off the first and and add a colon
 
 # Ex: ['count_1_quant', 'sum_2_quant', 'avg_2_quant', 'max_3_quant'] -> [[('count', 'quant', 'count_1_quant')], [('sum', 'quant', 'sum_2_quant'), ('avg', 'quant', 'avg_2_quant')], [('max', 'quant', 'max_3_quant')]]
-def split_aggregates(aggregates):
+def split_aggregates(agg_list):
         '''
         Usage: Used for splitting up the aggregates (a list of strings) into a list of lists of tuples (each list contains tuples composed of the aggregate followed by the attribute name)
         '''
-        split_aggregates = [] # end result initialized
-        curr_gv = "1" # assumes that the list of aggregates are sorted
+        split_aggregates = [] # End result initialized
+        curr_gv = "1" # Assumes that the list of aggregates are sorted
         temp = []
-        for agg in aggregates:
-            split_agg = agg.split("_") # splits up the specific aggregate (as a string) (i.e. count_1_quant) into a list containing its components (i.e. ["count", "1", "quant"])
+        for agg in agg_list:
+            split_agg = agg.split("_") # Splits up the specific aggregate (as a string) (i.e. count_1_quant) into a list containing its components (i.e. ["count", "1", "quant"])
             if split_agg[1] != curr_gv:
                 split_aggregates.append(temp)
                 temp = []
@@ -59,42 +81,67 @@ def split_aggregates(aggregates):
         split_aggregates.append(temp)
         return split_aggregates
 
+# Ex:
 def generate_agg_code(gv_list):
     '''
     Usage: Takes in gv_list (list of tuples) and generates the string that will be inputted into the generated file.
     '''
     agg_string = """"""
+    avg_string = """"""
     for tup in gv_list: # tup is of the following type: (agg: String, attr: String)
         agg = tup[0]
-        attr = tup[1]
-        aggName = tup[2]
+        attrib = tup[1]
+        agg_name = tup[2]
         # Will check to see which aggregate it is, will call the appropriate function that will return the appropriate string, which will get added to agg_string
         match agg:
             case 'count': 
-                agg_string = agg_string + countCodeGenerator(aggName)
+                agg_string = agg_string + count_code_generator(agg_name)
             case 'max':
-                agg_string = agg_string + maxCodeGenerator(attr, aggName)
+                agg_string = agg_string + max_code_generator(attrib, agg_name)
             case 'min':
-                agg_string = agg_string + minCodeGenerator(attr, aggName)
+                agg_string = agg_string + min_code_generator(attrib, agg_name)
             case 'sum':
-                agg_string = agg_string + sumCodeGenerator(attr, aggName)
-            case _:
-                print("Error: Aggregate not found!")
-                return -1
-    return agg_string[:-1]
+                agg_string = agg_string + sum_code_generator(attrib, agg_name)
+            case 'avg':
+                in_loop_string, out_loop_string = avg_code_generator(attrib, agg_name)
+                agg_string = agg_string + in_loop_string
+                avg_string = avg_string + out_loop_string
+    return agg_string[:-1], avg_string # Can never have no aggregates
+
+# Generates code for having clause
+# Ex: sum_1_quant > 2 * sum_2_quant -> "if mf_struct[i]['sum_1_quant'] > 2 * mf_struct[i]['sum_2_quant']: _global.append(mf_struct[i])
+def generate_having_code(having, group_by_attrib):
+    having_string = "if"
+    compare_agg = set(["avg", "min", "max", "count", "sum"])
+    compare_attrib = set(group_by_attrib)
+    word_list = having.split(" ")
+    for word in word_list:
+        temp = word.split("_")
+        # Add a mf_struct[i] for aggregates and attributes
+        if temp[0] in compare_agg or word in compare_attrib:
+            having_string = having_string + " mf_struct[i]['" + word + "']"
+        # Add an addition '=' for equality cases
+        elif word == "=":
+            having_string = having_string + " =="
+        else:
+            having_string = having_string + " " + word
+    return having_string + ": _global.append(mf_struct[i])"
 
 # Code generators for all of the aggregate functions
-def maxCodeGenerator(attr, aggName):
-    return f"""            if row['{attr}'] > mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
+def max_code_generator(attrib, agg_name):
+    return f"""            if mf_struct[pos]['{agg_name}'] == float('inf'): mf_struct[pos]['{agg_name}'] = row['{attrib}']\n            if row['{attrib}'] > mf_struct[pos]['{agg_name}']: mf_struct[pos]['{agg_name}'] = row['{attrib}']\n"""
 
-def minCodeGenerator(attr, aggName):
-    return f"""            if row['{attr}'] < mf_struct[pos]['{aggName}']: mf_struct[pos]['{aggName}'] = row['{attr}']\n"""
+def min_code_generator(attrib, agg_name):
+    return f"""            if mf_struct[pos]['{agg_name}'] == float('-inf'): mf_struct[pos]['{agg_name}'] = row['{attrib}']\n            if row['{attrib}'] < mf_struct[pos]['{agg_name}']: mf_struct[pos]['{agg_name}'] = row['{attrib}']\n"""
 
-def countCodeGenerator(aggName):
-    return f"""            mf_struct[pos]['{aggName}'] += 1\n"""
+def count_code_generator(agg_name):
+    return f"""            mf_struct[pos]['{agg_name}'] += 1\n"""
 
-def sumCodeGenerator(attr, aggName):
-    return f"""            mf_struct[pos]['{aggName}'] += row['{attr}']\n"""
+def sum_code_generator(attrib, agg_name):
+    return f"""            mf_struct[pos]['{agg_name}'] += row['{attrib}']\n"""
+
+def avg_code_generator(attrib, agg_name):
+    return f"""            mf_struct[pos]['{agg_name}'][0] += row['{attrib}']\n            mf_struct[pos]['{agg_name}'][1] += 1\n""", f"""mf_struct[i]['{agg_name}'] =  mf_struct[i]['{agg_name}'][0] / mf_struct[i]['{agg_name}'][1]\n"""
 
 def main():
     """
@@ -115,6 +162,7 @@ def main():
         F_Vect = f.readline()
         Pred_List = f.readline()
         Having = f.readline()
+        f.close()
         S = S.strip("\n")
         n = n.strip("\n")
         V = V.strip("\n")
@@ -138,83 +186,33 @@ def main():
     V = V.split(", ")
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
-    ##### Add Having later #####
-    splitPred = splitPredicates(Pred_List)
-    splitAgg = split_aggregates(F_Vect)
-    genCode = ""
+    split_pred = split_predicates(Pred_List, n)
+    split_agg = split_aggregates(F_Vect)
+    gen_code = ""
+    add_code = ""
+    # Generate the loops for aggregate functions
     for i in range(n):
-        parsePred = parsePredicates(splitPred[i])
-        aggCode = generate_agg_code(splitAgg[i])
-        genCode = genCode + groupingVariable(parsePred, aggCode)
-    '''
-    ##### Testing Code #####
-    test1 = splitPredicates(Pred_List)
-    test2 = parsePredicates(test1[1])
-    test4 = split_aggregates(F_Vect)
-    test5 = generate_agg_code(test4[1])
-    test3 = groupingVariable(test2, test5)
-    print(test3)
-    '''
-    '''
+        parse_pred = generate_pred_code(split_pred[i])
+        agg_code, avg_code = generate_agg_code(split_agg[i])
+        if avg_code:
+            add_code = add_code + generate_avg_code(avg_code)
+        gen_code = gen_code + generate_for_loop_code(parse_pred, agg_code, add_code)
+        add_code = ""
+    if Having == "None":
+        having_code = "_global.append(mf_struct[i])"
+    else:
+        having_code = generate_having_code(Having, V)
+    # Inject code in the appropriate variables
 
-    ############################################################################################
-    # READ INPUT (READING FROM FILE)
-    
-
-    # READ INPUT (INTERACTIVELY FROM USER)
-        
-
-    # CREATING MF STRUCT
-
-
-    # ANY UPKEEP STEPS REQUIRED
-
-
-    ####### START OF QUERY PROCESSING #######
-    # QUERY PROCESSING LOGIC (NEEDS TO BE INSERTED INTO body VARIABLE (SEE BELOW))
-    ## (NOTE 0) SHOULD BE IN A BIG FOR-LOOP (JAKOB), iterate through vector of aggregates (#4 in phi args)
-
-    ## MAX (FOR LOOP)
-    # initialize dictionary
-    ## i think that the name of the dictionary should be different for each max computation since there could be more than one, and we don't want things to get messy. name it as AGG_NAME_dict, where AGG_NAME is where in the vector of aggregates we are currently at (see NOTE 0 of Query Processing Logic)
-    # max_val = row0_val # set the max to be the value of the very first NOT NEEDED IF USE DICT, SINCE YOU CAN ALWAYS ADD TO DICT NEW VALUES
-    for row in database: # specific variable names tbd
-        if where_clause_conditions:
-            group_tuple = blablaba # this is to calculate where in the dictionary we are going to compare with (or add) adding might need separate code, idk
-            if value_at_row > max_val_for_group: # max_val_for_group is gonna be stored in the dict
-                max_val_for_group = value # this needs to be changed for the given dict entry for that tuple
-        # Question: ~~do we need to keep track of the rows in a separate thing so that we can display them all~~
-        ## Answer: we do not, since we will likely be keeping the max value in a dictionary, where the key is the grouping tuple (e.g. (cust, prod)) and the value is the max for that tuple (like, if we were looking for the max quantity for each customer and product combination, then the dict would be like {(Boo, Apple): 500; (Boo, Banana): 1000 ...}), or something like that (formatting tbd)
-
-    ## MIN (FOR LOOP)
-    # symmetric to max
-
-    ## COUNT (FOR LOOP)
-    # similar to max?
-
-
-    ## SUM (FOR LOOP)
-    # similar to max?
-
-    ## AVERAGE (FOR LOOP) (RELIES ON COUNT AND SUM)
-    # similar to max?
-
-    ''' 
-    ####### END OF QUERY PROCESSING ####### 
-
-    # INJECT FOR LOOPS INTO body VARIABLE
-
-
-    ############################################################################################
     functions = """
 # Search for a given "group by" attrib. value(s) in mf_struct
 def lookup(cur_row, V, NUM_OF_ENTRIES, mf_struct):
     for i in range(NUM_OF_ENTRIES):
-        numSame = len(V)
+        num_same = len(V)
         for attrib in V:
             if mf_struct[i][attrib] == cur_row[attrib]:
-                numSame -= 1
-            if numSame == 0:
+                num_same -= 1
+            if num_same == 0:
                 return i
     return -1
 
@@ -226,20 +224,28 @@ def add(cur_row, V, NUM_OF_ENTRIES, mf_struct):
     return NUM_OF_ENTRIES, mf_struct
 """
 
-    setUp = f"""
+    set_up = f"""
     S = {S} #  1. S - projected columns / expressions
     n = {n} #  2. n - number of grouping variables
     V = {V} #  3. V - grouping attributes
     F_Vect = {F_Vect} #  4. F-VECT - vector of aggregate functions
     Pred_List = {Pred_List} #  5. PRED-LIST - list of predicates for grouping
-    Having = {Having} #  6. HAVING
+    Having = "{Having}" #  6. HAVING
 
     # Generate the code for mf_struct
     base_struct = dict()
     for attrib in V:
         base_struct[attrib] = None
-    for aggre in F_Vect:
-        base_struct[aggre] = 0
+    for agg in F_Vect:
+        split_agg = agg.split("_")
+        if split_agg[0] == 'avg':
+            base_struct[agg] = [0, 0] # Create a list to store sum and count to compute the average
+        elif split_agg[0] == 'min':
+            base_struct[agg] = float('-inf')
+        elif split_agg[0] == 'max':
+            base_struct[agg] = float('inf')
+        else:
+            base_struct[agg] = 0
     mf_struct = []
     for i in range(500):
         mf_struct.append(copy.deepcopy(base_struct))
@@ -279,7 +285,11 @@ def query():
     cur.execute("SELECT * FROM sales")
     
     _global = []
-    {setUp}{genCode}
+    {set_up}{gen_code}
+    for i in range(NUM_OF_ENTRIES):
+        for col in set(F_Vect) - set(S):
+            del mf_struct[i][col]
+        {having_code}
     
     return tabulate.tabulate(_global,
                         headers="keys", tablefmt="psql")
@@ -290,7 +300,6 @@ def main():
 if "__main__" == __name__:
     main()
 """
-
     # Write the generated code to a file
     open("_generated.py", "w").write(tmp)
     # Execute the generated code
