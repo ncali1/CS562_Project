@@ -1,0 +1,11 @@
+cust, prod, avg_1_quant, max_1_quant
+1
+cust, prod
+avg_1_quant, max_1_quant, min_1_quant, count_1_quant
+None
+None
+
+Select cust, prod, avg(quant) avg_1_quant, max(quant)
+From sales
+Group by cust, prod
+Order by cust, prod

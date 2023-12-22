@@ -1,0 +1,11 @@
+cust, prod, max_1_quant, min_1_quant
+1
+cust, prod
+max_1_quant, min_1_quant
+None
+None
+
+Select cust, prod, max(quant) max_1_quant, min(quant) min_1_quant
+From sales
+Group by cust, prod
+Order by cust, prod

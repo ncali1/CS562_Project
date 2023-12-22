@@ -1,0 +1,25 @@
+prod, avg_1_quant, count_2_quant
+2
+prod
+avg_1_quant, count_2_quant
+1.year >= 2016 and year <= 2017; 2.year >= 2018 and year <= 2019; 2.quant >= avg_1_quant
+None
+
+
+
+With q1 as
+(
+    Select prod, avg(quant) avg_1_quant
+    From sales
+    Where year >= 2016 and year <= 2017
+    Group by prod
+), q2 as
+(
+    Select sales.prod, count(sales.prod) count_2_quant
+    From sales, q1
+    Where sales.year >= 2018 and sales.year <= 2019 and sales.quant >= q1.avg_1_quant
+    Group by sales.prod
+)
+Select *
+From q1 natural join q2
+Order by prod
