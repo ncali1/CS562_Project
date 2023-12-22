@@ -17,7 +17,7 @@ def generate_for_loop_code(pred_string, agg_string, add_calc_string):
 # Generate code for avg calculation
 def generate_avg_code(add_calc_string): 
     return f"""for i in range(NUM_OF_ENTRIES):
-        {add_calc_string}"""
+{add_calc_string}"""
 
 # Split predicates for grouping var’s
 # Ex: "1.state = 'NY'; 2.state = 'NJ'"; 3.state = 'CT' -> [["state = 'NY'"], ["state = 'NJ'"], ["state = 'CT'"]]
@@ -66,28 +66,23 @@ def generate_pred_code(pred_list):
         return pred_string[1:-4] + ":" # Cut off the extra first space, the last and, and add a colon
 
 # Ex: ['count_1_quant', 'sum_2_quant', 'avg_2_quant', 'max_3_quant'] -> [[('count', 'quant', 'count_1_quant')], [('sum', 'quant', 'sum_2_quant'), ('avg', 'quant', 'avg_2_quant')], [('max', 'quant', 'max_3_quant')]]
-def split_aggregates(agg_list):
+def split_aggregates(agg_list, n):
         '''
         Usage: Used for splitting up the aggregates (a list of strings) into a list of lists of tuples (each list contains tuples composed of the aggregate followed by the attribute name)
         '''
-        split_aggregates = [] # End result initialized
-        curr_gv = "1" # Assumes that the list of aggregates are sorted
-        temp = []
+        split_aggregates = [[] for i in range(n)]
         before_agg = []
         for agg in agg_list:
             split_agg = agg.split("_") # Splits up the specific aggregate (as a string) (i.e. count_1_quant) into a list containing its components (i.e. ["count", "1", "quant"])
-            if split_agg[1] != curr_gv:
-                split_aggregates.append(temp)
-                temp = []
-                curr_gv = split_agg[1]
-            if len(split_agg) == 2:
+            try:
+                index = int(split_agg[1]) - 1
+                split_aggregates[index].append((split_agg[0], split_agg[2], agg))
+            except:
                 before_agg.append((split_agg[0], split_agg[1], agg))
-                continue
-            temp.append((split_agg[0], split_agg[2], agg))
-        split_aggregates.append(temp)
+        print(split_aggregates, before_agg)
         return split_aggregates, before_agg
 
-# Ex:
+# Ex: [('sum', 'quant', 'sum_2_quant'), ('avg', 'quant', 'avg_2_quant')] -> "mf_struct[pos]['sum_2_quant'] += row['quant']\n mf_struct[pos]['avg_2_quant'][0] += row['quant']\n mf_struct[pos]['avg_2_quant'][1] += 1\n"
 def generate_agg_code(gv_list):
     '''
     Usage: Takes in gv_list (list of tuples) and generates the string that will be inputted into the generated file.
@@ -147,7 +142,7 @@ def sum_code_generator(attrib, agg_name):
     return f"""            mf_struct[pos]['{agg_name}'] += row['{attrib}']\n"""
 
 def avg_code_generator(attrib, agg_name):
-    return f"""            mf_struct[pos]['{agg_name}'][0] += row['{attrib}']\n            mf_struct[pos]['{agg_name}'][1] += 1\n""", f"""mf_struct[i]['{agg_name}'] =  mf_struct[i]['{agg_name}'][0] / mf_struct[i]['{agg_name}'][1]\n"""
+    return f"""            mf_struct[pos]['{agg_name}'][0] += row['{attrib}']\n            mf_struct[pos]['{agg_name}'][1] += 1\n""", f"""        mf_struct[i]['{agg_name}'] = mf_struct[i]['{agg_name}'][0] / mf_struct[i]['{agg_name}'][1]\n"""
 
 def main():
     """
@@ -193,7 +188,7 @@ def main():
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
     split_pred = split_predicates(Pred_List, n)
-    split_agg, before_agg = split_aggregates(F_Vect)
+    split_agg, before_agg = split_aggregates(F_Vect, n)
     gen_code = ""
     add_code = ""
     # Generate the loop for general aggregate functions that are depended on
