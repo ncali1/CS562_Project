@@ -52,7 +52,7 @@ def generate_pred_code(pred_list):
              # Add an additional '=' for equality cases
             elif word == "=":
                 pred_string = pred_string + " =="
-            # Add cur for attributes
+            # Add row for attributes
             elif word in compare_attrib:
                 pred_string = pred_string + " row['" + word + "']"
                 print(pred_string)
@@ -73,15 +73,19 @@ def split_aggregates(agg_list):
         split_aggregates = [] # End result initialized
         curr_gv = "1" # Assumes that the list of aggregates are sorted
         temp = []
+        before_agg = []
         for agg in agg_list:
             split_agg = agg.split("_") # Splits up the specific aggregate (as a string) (i.e. count_1_quant) into a list containing its components (i.e. ["count", "1", "quant"])
             if split_agg[1] != curr_gv:
                 split_aggregates.append(temp)
                 temp = []
                 curr_gv = split_agg[1]
+            if len(split_agg) == 2:
+                before_agg.append((split_agg[0], split_agg[1], agg))
+                continue
             temp.append((split_agg[0], split_agg[2], agg))
         split_aggregates.append(temp)
-        return split_aggregates
+        return split_aggregates, before_agg
 
 # Ex:
 def generate_agg_code(gv_list):
@@ -189,9 +193,17 @@ def main():
     F_Vect = F_Vect.split(", ")
     Pred_List = Pred_List.split("; ")
     split_pred = split_predicates(Pred_List, n)
-    split_agg = split_aggregates(F_Vect)
+    split_agg, before_agg = split_aggregates(F_Vect)
     gen_code = ""
     add_code = ""
+    # Generate the loop for general aggregate functions that are depended on
+    if before_agg:
+        parse_pred = generate_pred_code([])
+        agg_code, avg_code = generate_agg_code(before_agg)
+        if avg_code:
+            add_code = add_code + generate_avg_code(avg_code)
+        gen_code = gen_code + generate_for_loop_code(parse_pred, agg_code, add_code)
+        add_code = ""
     # Generate the loops for aggregate functions
     for i in range(n):
         parse_pred = generate_pred_code(split_pred[i])
