@@ -1,0 +1,29 @@
+cust, prod, avg_1_quant, avg_2_quant, avg_3_quant, min_3_quant, max_3_quant
+3
+cust, prod
+avg_1_quant, avg_2_quant, avg_3_quant, min_3_quant, max_3_quant
+1.state = 'NY'; 2.state = 'NJ'; 3.state = 'CT'
+None
+
+With q1 as
+(
+	Select cust, prod, avg(quant) avg_1_quant
+	From sales
+	Where state = 'NY'
+	Group by cust, prod
+), q2 as
+(
+	Select cust, prod, avg(quant) avg_2_quant
+	From sales
+	Where state = 'NJ'
+	Group by cust, prod
+), q3 as
+(
+	Select cust, prod, avg(quant) avg_3_quant, min(quant) min_3_quant, max(quant) max_3_quant
+	From sales
+	Where state = 'CT'
+	Group by cust, prod
+)
+Select *
+From q1 natural join q2 natural join q3
+Order by cust, prod

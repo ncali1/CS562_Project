@@ -1,0 +1,23 @@
+prod, avg_1_quant, count_2_quant
+2
+prod
+avg_1_quant, count_2_quant
+1.month <= 6; 2.month >= 6; 2.quant >= avg_1_quant
+None
+
+With q1 as
+(
+	Select prod, avg(quant) avg_1_quant
+	From sales
+	Where month <= 6
+	Group by prod
+), q2 as
+(
+	Select sales.prod, count(sales.quant) count_2_quant
+	From sales, q1
+	Where month >= 6 and sales.prod = q1.prod and sales.quant >= q1.avg_1_quant
+	Group by sales.prod
+)
+Select *
+From q1 natural join q2
+Order by prod
