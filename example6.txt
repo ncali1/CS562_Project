@@ -1,0 +1,28 @@
+prod, count_1_quant, count_2_quant
+2
+prod
+avg_quant, count_1_quant, count_2_quant
+quant > avg_quant; 1.cust = 'Dan'; 2.cust != 'Dan'
+None
+
+With q1 as
+(
+	Select prod, avg(quant) avg_quant
+	From sales
+	Group by prod
+), q2 as
+(
+	Select sales.prod, count(sales.quant) count_1_quant
+	From sales, q1
+	Where cust = 'Dan' and sales.prod = q1.prod and sales.quant > q1.avg_quant
+	Group by sales.prod
+), q3 as
+(
+	Select sales.prod, count(sales.quant) count_2_quant
+	From sales, q1
+	Where cust != 'Dan' and sales.prod = q1.prod and sales.quant >= q1.avg_quant
+	Group by sales.prod
+)
+Select q1.prod, q2.count_1_quant, q3.count_2_quant
+From q1 natural join q2 natural join q3
+Order by prod
