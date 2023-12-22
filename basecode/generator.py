@@ -49,7 +49,10 @@ def generate_pred_code(pred_list):
             temp = word.split("_")
             if temp[0] in compare_agg: # Add mf_struct[pos] for dependant aggregates (Assumes the aggregate has been calculated at this point in time)
                 pred_string = pred_string + " mf_struct[pos]['" + word + "']"
-             # Add an additional '=' for equality cases
+            # Check for parentheses
+            elif word[0] == "(":
+                pred_string = pred_string + " (row['" + word[1:] + "']"
+            # Add an additional '=' for equality cases
             elif word == "=":
                 pred_string = pred_string + " =="
             # Add row for attributes
@@ -116,9 +119,15 @@ def generate_having_code(having, group_by_attrib):
     word_list = having.split(" ")
     for word in word_list:
         temp = word.split("_")
+        # Check for parentheses
+        if word[0] == "(":
+            having_string = having_string + " (mf_struct[i]['" + word[1:] + "']" 
         # Add a mf_struct[i] for aggregates and attributes
-        if temp[0] in compare_agg or word in compare_attrib:
-            having_string = having_string + " mf_struct[i]['" + word + "']"
+        elif temp[0] in compare_agg or word in compare_attrib:
+            if word[-1] == ")":
+                having_string = having_string + " mf_struct[i]['" + word[:-1] + "'])" 
+            else:
+                having_string = having_string + " mf_struct[i]['" + word + "']"
         # Add an additional '=' for equality cases
         elif word == "=":
             having_string = having_string + " =="
@@ -254,9 +263,10 @@ def add(cur_row, V, NUM_OF_ENTRIES, mf_struct):
         else:
             base_struct[agg] = 0
     mf_struct = []
-    for i in range(500):
+    for i in range(2000):
         mf_struct.append(copy.deepcopy(base_struct))
     NUM_OF_ENTRIES = 0
+    NEW_NUM_OF_ENTRIES = 0
 
     # Populate mf-struct with distinct values of grouping attribute
     for row in cur:
@@ -294,9 +304,10 @@ def query():
     _global = []
     {set_up}{gen_code}
     for i in range(NUM_OF_ENTRIES):
+        {having_code}; NEW_NUM_OF_ENTRIES += 1
+    for i in range(NEW_NUM_OF_ENTRIES):
         for col in set(F_Vect) - set(S):
-            del mf_struct[i][col]
-        {having_code}
+            del _global[i][col]
     
     return tabulate.tabulate(_global,
                         headers="keys", tablefmt="psql")
