@@ -55,7 +55,6 @@ def generate_pred_code(pred_list):
             # Add row for attributes
             elif word in compare_attrib:
                 pred_string = pred_string + " row['" + word + "']"
-                print(pred_string)
             else:
                 pred_string = pred_string + " " + word
         # Add implied and
@@ -79,7 +78,6 @@ def split_aggregates(agg_list, n):
                 split_aggregates[index].append((split_agg[0], split_agg[2], agg))
             except:
                 before_agg.append((split_agg[0], split_agg[1], agg))
-        print(split_aggregates, before_agg)
         return split_aggregates, before_agg
 
 # Ex: [('sum', 'quant', 'sum_2_quant'), ('avg', 'quant', 'avg_2_quant')] -> "mf_struct[pos]['sum_2_quant'] += row['quant']\n mf_struct[pos]['avg_2_quant'][0] += row['quant']\n mf_struct[pos]['avg_2_quant'][1] += 1\n"
